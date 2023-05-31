@@ -183,7 +183,11 @@ fun WebView(
                         wv.loadUrl(content.url, content.additionalHttpHeaders)
                     }
 
-                    is WebContent.Data -> {
+                    is WebContent.PostData -> {
+                        wv.postUrl(content.url, content.byteArray)
+                    }
+
+                    is WebContent.HtmlData -> {
                         wv.loadDataWithBaseURL(
                             content.baseUrl,
                             content.data,
@@ -324,7 +328,30 @@ sealed class WebContent {
         val additionalHttpHeaders: Map<String, String> = emptyMap(),
     ) : WebContent()
 
-    data class Data(
+    data class PostData(
+        val url: String,
+        val byteArray: ByteArray
+    ): WebContent() {
+        override fun equals(other: Any?): Boolean {
+            if (this === other) return true
+            if (javaClass != other?.javaClass) return false
+
+            other as PostData
+
+            if (url != other.url) return false
+            if (!byteArray.contentEquals(other.byteArray)) return false
+
+            return true
+        }
+
+        override fun hashCode(): Int {
+            var result = url.hashCode()
+            result = 31 * result + byteArray.contentHashCode()
+            return result
+        }
+    }
+
+    data class HtmlData(
         val data: String,
         val baseUrl: String? = null,
         val encoding: String = "utf-8",
@@ -336,7 +363,8 @@ sealed class WebContent {
     fun getCurrentUrl(): String? {
         return when (this) {
             is Url -> url
-            is Data -> baseUrl
+            is PostData -> url
+            is HtmlData -> baseUrl
             is NavigatorOnly -> throw IllegalStateException("Unsupported")
         }
     }
@@ -621,9 +649,9 @@ fun rememberWebViewStateWithHTMLData(
     historyUrl: String? = null
 ): WebViewState =
     remember {
-        WebViewState(WebContent.Data(data, baseUrl, encoding, mimeType, historyUrl))
+        WebViewState(WebContent.HtmlData(data, baseUrl, encoding, mimeType, historyUrl))
     }.apply {
-        this.content = WebContent.Data(
+        this.content = WebContent.HtmlData(
             data, baseUrl, encoding, mimeType, historyUrl
         )
     }
@@ -666,3 +694,24 @@ val WebStateSaver = run {
         }
     )
 }
+
+@Composable
+fun rememberWebViewStateWithPostData(
+    url: String,
+    byteArray: ByteArray
+): WebViewState =
+// Rather than using .apply {} here we will recreate the state, this prevents
+    // a recomposition loop when the webview updates the url itself.
+    remember {
+        WebViewState(
+            WebContent.PostData(
+                url = url,
+                byteArray = byteArray
+            )
+        )
+    }.apply {
+        this.content = WebContent.PostData(
+            url = url,
+            byteArray = byteArray
+        )
+    }
